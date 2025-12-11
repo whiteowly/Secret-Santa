@@ -1,6 +1,6 @@
 import logging
 import random
-import database 
+import main 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
@@ -23,7 +23,7 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     group_id = update.effective_chat.id
     
     # [DB] Initialize game in database
-    database.ensure_game_exists(group_id)
+    main.ensure_game_exists(group_id)
 
     keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -46,7 +46,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # [DB] Add participant to database
     # This function returns True if added, False if already exists
-    added = database.add_participant(user.id, group_id, username)
+    added = main.add_participant(user.id, group_id, username)
 
     if added:
         await query.answer("You are joining the Secret Santa!")
@@ -68,7 +68,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # [DB] Get current list of participants to update the message
     # Returns a list of tuples: [(user_id, username), (user_id, username)...]
-    participants = database.get_participants_data(group_id)
+    participants = main.get_participants_data(group_id)
     count = len(participants)
     
     # Create the text list of names
@@ -103,7 +103,7 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = query.message.chat_id
 
     # [DB] Fetch all participants
-    participants = database.get_participants_data(group_id)
+    participants = main.get_participants_data(group_id)
     # participants is [(123, 'Alice'), (456, 'Bob')]
 
     if len(participants) < 2:
@@ -128,8 +128,8 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pairs.append((santa_id, target_id))
 
     # 3. [DB] Save assignments to Database
-    database.update_assignments_and_status(group_id, pairs)
-    exchange_date = database.get_exchange_date(group_id)
+    main.update_assignments_and_status(group_id, pairs)
+    exchange_date = main.get_exchange_date(group_id)
     date_info = f"\n🗓️ **Exchange Day:** {exchange_date}" if exchange_date else ""
 
     # 4. Send DMs
@@ -178,7 +178,7 @@ async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     exchange_date = update.message.text
     
     # [DB] Save the date
-    database.update_exchange_date(group_id, exchange_date)
+    main.update_exchange_date(group_id, exchange_date)
     
     await update.message.reply_text(
         f"✅ Gift exchange day saved: **{exchange_date}**\n\n"
@@ -196,7 +196,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main():
     # [DB] Initialize the DB tables on startup
-    database.init_db()
+    main.init_db()
 
     application = Application.builder().token(TOKEN).build()
 
