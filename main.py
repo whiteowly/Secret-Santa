@@ -1,8 +1,16 @@
 import logging
 import random
-import main 
+import database # <--- CORRECT
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import (
+    Application, 
+    CommandHandler, 
+    CallbackQueryHandler, 
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,     
+    filters             
+)
 
 # REPLACE WITH YOUR TOKEN
 TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M"
@@ -23,7 +31,7 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     group_id = update.effective_chat.id
     
     # [DB] Initialize game in database
-    main.ensure_game_exists(group_id)
+    database.ensure_game_exists(group_id) # <--- CORRECTED
 
     keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -45,8 +53,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     username = user.username or user.first_name
 
     # [DB] Add participant to database
-    # This function returns True if added, False if already exists
-    added = main.add_participant(user.id, group_id, username)
+    added = database.add_participant(user.id, group_id, username) # <--- CORRECTED
 
     if added:
         await query.answer("You are joining the Secret Santa!")
@@ -61,14 +68,11 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 chat_id=group_id, 
                 text=f"❗ @{username} - I can't DM you! Please click my name and press Start."
             )
-            # Optional: You might want to remove them from DB here if DM fails, 
-            # but usually we let them stay and tell them to fix it.
     else:
         await query.answer("You are already in the list!", show_alert=False)
 
     # [DB] Get current list of participants to update the message
-    # Returns a list of tuples: [(user_id, username), (user_id, username)...]
-    participants = main.get_participants_data(group_id)
+    participants = database.get_participants_data(group_id) # <--- CORRECTED
     count = len(participants)
     
     # Create the text list of names
@@ -95,7 +99,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='Markdown'
         )
     except Exception:
-        pass # Message content didn't change
+        pass 
 
 async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the Draw logic using the Database."""
@@ -103,8 +107,7 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = query.message.chat_id
 
     # [DB] Fetch all participants
-    participants = main.get_participants_data(group_id)
-    # participants is [(123, 'Alice'), (456, 'Bob')]
+    participants = database.get_participants_data(group_id)
 
     if len(participants) < 2:
         await query.answer("Need at least 2 people!", show_alert=True)
@@ -113,7 +116,6 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer("Drawing names now...")
 
     # Extract IDs for shuffling
-    # We also need a map of ID -> Name to send the DM later
     user_ids = [p[0] for p in participants]
     id_to_name = {p[0]: p[1] for p in participants}
 
@@ -121,15 +123,15 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     random.shuffle(user_ids)
     
     # 2. Create Pairs (Circular)
-    pairs = [] # List of (santa_id, target_id)
+    pairs = [] 
     for i in range(len(user_ids)):
         santa_id = user_ids[i]
         target_id = user_ids[(i + 1) % len(user_ids)]
         pairs.append((santa_id, target_id))
 
     # 3. [DB] Save assignments to Database
-    main.update_assignments_and_status(group_id, pairs)
-    exchange_date = main.get_exchange_date(group_id)
+    database.update_assignments_and_status(group_id, pairs)
+    exchange_date = database.get_exchange_date(group_id)
     date_info = f"\n🗓️ **Exchange Day:** {exchange_date}" if exchange_date else ""
 
     # 4. Send DMs
@@ -171,14 +173,13 @@ async def set_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     return SETTING_DATE
     
-
 async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the date and saves it to the database."""
     group_id = update.effective_chat.id
     exchange_date = update.message.text
     
     # [DB] Save the date
-    main.update_exchange_date(group_id, exchange_date)
+    database.update_exchange_date(group_id, exchange_date)
     
     await update.message.reply_text(
         f"✅ Gift exchange day saved: **{exchange_date}**\n\n"
@@ -196,7 +197,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main():
     # [DB] Initialize the DB tables on startup
-    main.init_db()
+    database.init_db()
 
     application = Application.builder().token(TOKEN).build()
 
@@ -204,13 +205,13 @@ def main():
         entry_points=[CommandHandler('setdate', set_date_start)],
         states={
             SETTING_DATE: [
-                # Handles any plain text message that is NOT a command
                 MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_finish) 
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
+    application.add_handler(date_conv_handler)
     application.add_handler(CommandHandler(["start", "secretsanta"], start_secret_santa))
     application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
     application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
