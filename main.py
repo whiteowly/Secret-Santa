@@ -27,7 +27,9 @@ SETTING_DATE = 1
 async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles /start command."""
     if update.effective_chat.type not in ["group", "supergroup"]:
-        await update.message.reply_text("Please start Secret Santa in a group chat!")
+        await update.message.reply_text(
+            "Use this bot in a group chat, please and thank you. \n\n\n Btw @whiteowlyy built me✨"
+            )
         return
 
     group_id = update.effective_chat.id
@@ -39,9 +41,8 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "🎄 **Secret Santa Started!** 🎄\n\n"
-        "1. Click 'Join' below to enter.\n"
-        "2. **Start me in DM** so I can tell you who your target is!",
+        "Who's joining the Secret Santa? \n\n"
+        "Join the gang, but slide into my DMs first!\n",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
@@ -58,21 +59,18 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     added = database.add_participant(user.id, group_id, username) # <--- CORRECTED
 
     if added:
-        await query.answer("You are joining the Secret Santa!")
+        await query.answer("You are joining the gang!")
         # Send DM confirmation
         try:
-            keyboard = [[InlineKeyboardButton("View Summary", callback_data='summary_btn')]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
             await context.bot.send_message(
                 chat_id=user.id, 
-                text=f"✅ You have successfully joined the Secret Santa for **{query.message.chat.title}**!",
+                text=f"You have successfully joined the gang for {query.message.chat.title}✨",
                 reply_markup=reply_markup # <--- ADDED LINE
             )
         except Exception:
             await context.bot.send_message(
                 chat_id=group_id, 
-                text=f"❗ @{username} - I can't DM you! Please click my name and press Start."
+                text=f"❗ @{username} DM me:)"
             )
     else:
         await query.answer("You are already in the list!", show_alert=False)
@@ -87,20 +85,20 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Logic for buttons (Show GO button if 2+ people)
     if count >= 2:
         keyboard = [
-            [InlineKeyboardButton("Join Secret Santa", callback_data='join_game')],
-            [InlineKeyboardButton("🚀 GO! Draw Targets", callback_data='go_draw')]
+            [InlineKeyboardButton("Join!", callback_data='join_game')],
+            [InlineKeyboardButton("Draw", callback_data='go_draw')]
         ]
     else:
-        keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
+        keyboard = [[InlineKeyboardButton("Join!", callback_data='join_game')]]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
         await query.edit_message_text(
-            text=f"🎁 **Secret Santa Participants** 🎁\n\n"
-                 f"**Count: {count}**\n"
-                 f"{names_list}\n\n"
-                 f"{'Ready to draw? Click GO!' if count >= 2 else 'Waiting for more people...'}",
+            text=f"Gang Members\n\n"
+                 f"Total: {count}**\n"
+                 f"@{names_list}\n\n"
+                 f"{'Is everyone in? Hit Draw!' if count >= 2 else 'are you planning to give a gift for yourself? wait for more people to join...'}",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
@@ -138,20 +136,21 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 3. [DB] Save assignments to Database
     database.update_assignments_and_status(group_id, pairs)
     exchange_date = database.get_exchange_date(group_id)
-    date_info = f"\n🗓️ **Exchange Day:** {exchange_date}" if exchange_date else ""
+    date_info = f"\nExchange Day: {exchange_date}" if exchange_date else ""
 
     # 4. Send DMs
     success_count = 0
     for santa_id, target_id in pairs:
         target_name = id_to_name[target_id]
         try:
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("Refresh Summary", callback_data='summary_btn')]])
             await context.bot.send_message(
                 chat_id=santa_id,
-                text=f"🤫 **SECRET SANTA MISSION** 🤫\n\n"
-                     f"You have been assigned to get a gift for: \n"
-                     f"🎁 **{target_name}** 🎁"
+                text=f"You are @{target_name} 's secret santa! \n\n"
+                     f"Make sure you get them something good! \n"
                      f"{date_info}",
-                     parse_mode='Markdown'
+                     parse_mode='Markdown',
+                
             )
             success_count += 1
         except Exception as e:
@@ -159,20 +158,20 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 5. Final Announcement
     await query.message.edit_text(
-        f"🎲 **Draw Complete!** 🎲\n\n"
+        f"Draw Complete!\n\n"
         f"Participants: {len(user_ids)}\n"
         f"DMs Sent: {success_count}\n\n"
-        "Check your private messages to see who you got!"
+        "Check your DMs to see who you got!"
     )
 
 async def set_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation by asking for the gift exchange date."""
     if update.effective_chat.type not in ["group", "supergroup"]:
-        await update.message.reply_text("This command must be used in the group chat.")
+        await update.message.reply_text("This command must be used in a group chat.")
         return ConversationHandler.END
 
     await update.message.reply_text(
-        "📅 **What is the gift exchange day?**\n"
+        "When is the gifting day?\n"
         "Please reply with the date (e.g., 'Dec 24th' or 'January 5th').\n\n"
         "To cancel, use /cancel.",
         parse_mode='Markdown'
@@ -188,17 +187,15 @@ async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     database.update_exchange_date(group_id, exchange_date)
     
     await update.message.reply_text(
-        f"✅ Gift exchange day saved: **{exchange_date}**\n\n"
-        f"This date will now be included in the private assignment messages.",
+        f"It's a date!: on {exchange_date}\n\n",
         parse_mode='Markdown'
     )
     
-    # End the conversation
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels the current conversation."""
-    await update.message.reply_text('❌ Date setting cancelled.')
+    await update.message.reply_text('Date setting cancelled.')
     return ConversationHandler.END
 
 async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,76 +238,27 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 3. Send the result
         if days_remaining < 0:
             await update.message.reply_text(
-                f"🎉 **The gift exchange day ({date_str}) has passed!** I hope you all had fun!"
+                f"How were the gifts?"
             )
         elif days_remaining == 0:
             await update.message.reply_text(
-                f"🚨 **IT'S TODAY!** 🚨\n\n"
-                f"The gift exchange is happening *right now*! Get those presents ready!"
+                f"IT'S TODAY!\n\n"
+                f"Let's see those gifts!"
             )
         else:
             await update.message.reply_text(
-                f"⏳ **Time Remaining Until Gift Exchange!** ⏳\n\n"
-                f"The exchange is on **{date_str}**.\n"
-                f"That means you have exactly **{days_remaining} days** left to shop! Happy gifting!"
+                f"Time Remaining Until Gifting day! ⏳\n\n"
+                f"That means you have exactly {days_remaining} days left to shop! Happy gifting!"
             )
 
     except ValueError:
         await update.message.reply_text(
-            f"❌ **Error Calculating Date!**\n\n"
+            f"Error Calculating Date!\n\n"
             f"I couldn't understand the date format: **{date_str}**.\n"
-            "Please ask the admin to use `/setdate` with a clear format (e.g., 'Dec 24th')."
+            " Ask the admin to use `/setdate` with a clear format (e.g., 'Dec 24th')."
         )
 
 
-async def show_summary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the 'summary_btn' button click in DMs and displays all assignments."""
-    query = update.callback_query
-    user_id = query.from_user.id
-    
-    await query.answer("Fetching your Secret Santa Summary...")
-
-    # [DB] Get all assignments for the user
-    assignments = database.get_all_assignments_for_user(user_id)
-    
-    if not assignments:
-        message = (
-            "🔎 **No Active Secret Santa Assignments Found!**\n\n"
-            "This means you haven't joined a group's draw yet, or I haven't been able to save the assignment."
-        )
-    else:
-        summary_text = "🎄 **YOUR SECRET SANTA DASHBOARD** 🎁\n\n"
-        
-        for group_id, target_name, exchange_date in assignments:
-            # Note: We can't easily get the Group Name/Title from the bot, only the group_id.
-            # We must instruct the user how to identify the group.
-            
-            date_info = f"🗓️ Date: {exchange_date}" if exchange_date else "🗓️ Date: Not set"
-            
-            summary_text += f"**Group ID: `{group_id}`**\n"
-            summary_text += f"🤫 Your Target: **{target_name}**\n"
-            summary_text += f"{date_info}\n"
-            summary_text += "----------\n"
-
-        message = (
-            f"{summary_text}"
-            f"*(Tip: To find the group, search Telegram for the Group ID: `{assignments[0][0]}`)*"
-        )
-
-    # Use edit_message_text to update the message the user clicked, if possible
-    try:
-        await query.edit_message_text(
-            text=message,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Refresh Summary", callback_data='summary_btn')]]),
-            parse_mode='Markdown'
-        )
-    except Exception:
-        # If the original message is too old or wasn't a callback message, send a new one.
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=message,
-            parse_mode='Markdown'
-        )
 
 def main():
     # [DB] Initialize the DB tables on startup
@@ -332,7 +280,7 @@ def main():
     application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
     application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
     application.add_handler(CommandHandler(["daysleft", "reminddays"], days_left))
-    application.add_handler(CallbackQueryHandler(show_summary_callback, pattern='^summary_btn$'))
+   
     
     print("Bot started polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
