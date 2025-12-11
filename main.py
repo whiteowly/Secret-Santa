@@ -61,9 +61,13 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.answer("You are joining the Secret Santa!")
         # Send DM confirmation
         try:
+            keyboard = [[InlineKeyboardButton("View Summary", callback_data='summary_btn')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await context.bot.send_message(
                 chat_id=user.id, 
-                text=f"✅ You have successfully joined the Secret Santa for **{query.message.chat.title}**!"
+                text=f"✅ You have successfully joined the Secret Santa for **{query.message.chat.title}**!",
+                reply_markup=reply_markup # <--- ADDED LINE
             )
         except Exception:
             await context.bot.send_message(
