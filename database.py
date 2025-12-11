@@ -138,3 +138,40 @@ def get_exchange_date(group_id):
         return result[0] if result and result[0] else None 
     finally:
         conn.close()
+
+def get_exchange_date(group_id):
+    """Retrieves the saved gift exchange date text."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute("SELECT exchange_date FROM games WHERE group_id = ?", (group_id,))
+        result = cursor.fetchone()
+        return result[0] if result and result[0] else None 
+    finally:
+        conn.close()
+        
+# --- Add this new function to your database.py file ---
+
+def get_all_assignments_for_user(user_id):
+    """
+    Retrieves all Secret Santa assignments where the given user_id is the SANTA.
+    Returns: A list of tuples: [(group_id, target_name, exchange_date), ...]
+    """
+    conn = get_db_connection()
+    try:
+        # We join assignments (santa_id -> target_id), participants (target_id -> target_name), 
+        # and games (group_id -> exchange_date).
+        cursor = conn.execute("""
+            SELECT
+                t1.group_id,
+                t2.username,
+                t3.exchange_date
+            FROM assignments t1
+            JOIN participants t2 ON t1.target_id = t2.user_id
+            JOIN games t3 ON t1.group_id = t3.group_id
+            WHERE t1.santa_id = ?
+        """, (user_id,))
+        
+        # Returns a list of all assignments found for the user
+        return cursor.fetchall()
+    finally:
+        conn.close()        

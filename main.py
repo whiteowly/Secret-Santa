@@ -11,6 +11,7 @@ from telegram.ext import (
     MessageHandler,     
     filters             
 )
+import datetime
 
 # REPLACE WITH YOUR TOKEN
 TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M"
@@ -21,6 +22,7 @@ logging.basicConfig(
 )
 
 SETTING_DATE = 1
+
 
 async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles /start command."""
@@ -195,6 +197,117 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('❌ Date setting cancelled.')
     return ConversationHandler.END
 
+async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles /daysleft command, calculating days remaining until exchange."""
+    group_id = update.effective_chat.id
+    
+    # 1. Get the exchange date string from the database
+    date_str = database.get_exchange_date(group_id)
+    
+    if not date_str:
+        await update.message.reply_text(
+            "⚠️ The gift exchange date has not been set yet! "
+            "Please use the `/setdate` command first."
+        )
+        return
+
+    try:
+        # We assume the user entered Month and Day (e.g., 'Dec 24th')
+        # We need to append the current year to parse it. 
+        # For simplicity, we assume the date is in the current or next year.
+        
+        today = datetime.date.today()
+        current_year = today.year
+
+        # Clean the date string (e.g., remove 'th', 'st', 'rd')
+        cleaned_date_str = date_str.lower().replace('st', '').replace('nd', '').replace('rd', '').replace('th', '')
+
+        # Attempt to parse the date for the current year
+        exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {current_year}", "%b %d %Y").date()
+        
+        # If the exchange date is in the past, assume it's next year
+        if exchange_date < today:
+            next_year = current_year + 1
+            exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {next_year}", "%b %d %Y").date()
+
+        # 2. Calculate the difference
+        time_until = exchange_date - today
+        days_remaining = time_until.days
+
+        # 3. Send the result
+        if days_remaining < 0:
+            await update.message.reply_text(
+                f"🎉 **The gift exchange day ({date_str}) has passed!** I hope you all had fun!"
+            )
+        elif days_remaining == 0:
+            await update.message.reply_text(
+                f"🚨 **IT'S TODAY!** 🚨\n\n"
+                f"The gift exchange is happening *right now*! Get those presents ready!"
+            )
+        else:
+            await update.message.reply_text(
+                f"⏳ **Time Remaining Until Gift Exchange!** ⏳\n\n"
+                f"The exchange is on **{date_str}**.\n"
+                f"That means you have exactly **{days_remaining} days** left to shop! Happy gifting!"
+            )
+
+    except ValueError:
+        await update.message.reply_text(
+            f"❌ **Error Calculating Date!**\n\n"
+            f"I couldn't understand the date format: **{date_str}**.\n"
+            "Please ask the admin to use `/setdate` with a clear format (e.g., 'Dec 24th')."
+        )
+
+
+async def show_summary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the 'summary_btn' button click in DMs and displays all assignments."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    await query.answer("Fetching your Secret Santa Summary...")
+
+    # [DB] Get all assignments for the user
+    assignments = database.get_all_assignments_for_user(user_id)
+    
+    if not assignments:
+        message = (
+            "🔎 **No Active Secret Santa Assignments Found!**\n\n"
+            "This means you haven't joined a group's draw yet, or I haven't been able to save the assignment."
+        )
+    else:
+        summary_text = "🎄 **YOUR SECRET SANTA DASHBOARD** 🎁\n\n"
+        
+        for group_id, target_name, exchange_date in assignments:
+            # Note: We can't easily get the Group Name/Title from the bot, only the group_id.
+            # We must instruct the user how to identify the group.
+            
+            date_info = f"🗓️ Date: {exchange_date}" if exchange_date else "🗓️ Date: Not set"
+            
+            summary_text += f"**Group ID: `{group_id}`**\n"
+            summary_text += f"🤫 Your Target: **{target_name}**\n"
+            summary_text += f"{date_info}\n"
+            summary_text += "----------\n"
+
+        message = (
+            f"{summary_text}"
+            f"*(Tip: To find the group, search Telegram for the Group ID: `{assignments[0][0]}`)*"
+        )
+
+    # Use edit_message_text to update the message the user clicked, if possible
+    try:
+        await query.edit_message_text(
+            text=message,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Refresh Summary", callback_data='summary_btn')]]),
+            parse_mode='Markdown'
+        )
+    except Exception:
+        # If the original message is too old or wasn't a callback message, send a new one.
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=message,
+            parse_mode='Markdown'
+        )
+
 def main():
     # [DB] Initialize the DB tables on startup
     database.init_db()
@@ -210,11 +323,12 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
-
     application.add_handler(date_conv_handler)
     application.add_handler(CommandHandler(["start", "secretsanta"], start_secret_santa))
     application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
     application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
+    application.add_handler(CommandHandler(["daysleft", "reminddays"], days_left))
+    application.add_handler(CallbackQueryHandler(show_summary_callback, pattern='^summary_btn$'))
     
     print("Bot started polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
