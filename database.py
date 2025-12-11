@@ -1,117 +1,222 @@
-import sqlite3
 import logging
+import random
+import database 
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
-# Configuration for the database file
-DB_NAME = 'santa.db'
-logging.basicConfig(level=logging.INFO)
+# REPLACE WITH YOUR TOKEN
+TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M"
 
-# --- Connection Management ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-def get_db_connection():
-    """Returns a new connection object for thread-safe database access."""
-    # Using sqlite3.connect is best practice when opening and closing for single transactions
-    return sqlite3.connect(DB_NAME)
+SETTING_DATE = 1
 
-# --- Initialization ---
+async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles /start command."""
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("Please start Secret Santa in a group chat!")
+        return
 
-def init_db():
-    """Initializes the database and creates the necessary tables."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    group_id = update.effective_chat.id
     
-    try:
-        # Table 1: Games (Manages the overall Secret Santa event in a group)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS games (
-                group_id INTEGER PRIMARY KEY,
-                status TEXT NOT NULL,          -- e.g., 'JOINING', 'COMPLETED'
-                date_started TEXT NOT NULL
+    # [DB] Initialize game in database
+    database.ensure_game_exists(group_id)
+
+    keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "🎄 **Secret Santa Started!** 🎄\n\n"
+        "1. Click 'Join' below to enter.\n"
+        "2. **Start me in DM** so I can tell you who your target is!",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the Join button."""
+    query = update.callback_query
+    
+    user = query.from_user
+    group_id = query.message.chat_id
+    username = user.username or user.first_name
+
+    # [DB] Add participant to database
+    # This function returns True if added, False if already exists
+    added = database.add_participant(user.id, group_id, username)
+
+    if added:
+        await query.answer("You are joining the Secret Santa!")
+        # Send DM confirmation
+        try:
+            await context.bot.send_message(
+                chat_id=user.id, 
+                text=f"✅ You have successfully joined the Secret Santa for **{query.message.chat.title}**!"
             )
-        """)
-        
-        # Table 2: Participants
-        # target_id is initially NULL and filled after the draw
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS participants (
-                user_id INTEGER NOT NULL,
-                group_id INTEGER NOT NULL,
-                username TEXT,
-                target_id INTEGER,
-                
-                PRIMARY KEY (user_id, group_id), 
-                FOREIGN KEY (group_id) REFERENCES games(group_id)
+        except Exception:
+            await context.bot.send_message(
+                chat_id=group_id, 
+                text=f"❗ @{username} - I can't DM you! Please click my name and press Start."
             )
-        """)
-        
-        conn.commit()
-        logging.info("Database initialized successfully.")
-    except Exception as e:
-        logging.error(f"Database Initialization Error: {e}")
-    finally:
-        conn.close()
+            # Optional: You might want to remove them from DB here if DM fails, 
+            # but usually we let them stay and tell them to fix it.
+    else:
+        await query.answer("You are already in the list!", show_alert=False)
 
-# --- CRUD (Create, Read, Update, Delete) Operations ---
+    # [DB] Get current list of participants to update the message
+    # Returns a list of tuples: [(user_id, username), (user_id, username)...]
+    participants = database.get_participants_data(group_id)
+    count = len(participants)
+    
+    # Create the text list of names
+    names_list = "\n".join([f"• {p[1]}" for p in participants])
 
-def ensure_game_exists(group_id):
-    """Creates a new game entry if one doesn't exist for the group."""
-    conn = get_db_connection()
+    # Logic for buttons (Show GO button if 2+ people)
+    if count >= 2:
+        keyboard = [
+            [InlineKeyboardButton("Join Secret Santa", callback_data='join_game')],
+            [InlineKeyboardButton("🚀 GO! Draw Targets", callback_data='go_draw')]
+        ]
+    else:
+        keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     try:
-        conn.execute("INSERT OR IGNORE INTO games (group_id, status, date_started) VALUES (?, ?, DATETIME('now'))", 
-                     (group_id, 'JOINING'))
-        conn.commit()
-    finally:
-        conn.close()
-
-def add_participant(user_id, group_id, username):
-    """Adds a participant if they don't already exist for the given game."""
-    conn = get_db_connection()
-    try:
-        # The 'OR IGNORE' handles users clicking the join button multiple times
-        conn.execute("INSERT OR IGNORE INTO participants (user_id, group_id, username) VALUES (?, ?, ?)", 
-                     (user_id, group_id, username))
-        conn.commit()
-        return True
+        await query.edit_message_text(
+            text=f"🎁 **Secret Santa Participants** 🎁\n\n"
+                 f"**Count: {count}**\n"
+                 f"{names_list}\n\n"
+                 f"{'Ready to draw? Click GO!' if count >= 2 else 'Waiting for more people...'}",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     except Exception:
-        return False # Failed to add/already exists (though OR IGNORE minimizes this)
-    finally:
-        conn.close()
+        pass # Message content didn't change
 
-def get_participant_count(group_id):
-    """Retrieves the total number of unique participants in a game."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.execute("SELECT COUNT(user_id) FROM participants WHERE group_id = ?", (group_id,))
-        return cursor.fetchone()[0]
-    finally:
-        conn.close()
-        
-def get_participants_data(group_id):
-    """Retrieves a list of all participants' user_id and username for the draw."""
-    conn = get_db_connection()
-    try:
-        # Order by user_id to ensure the order is consistent before and after shuffle
-        cursor = conn.execute("SELECT user_id, username FROM participants WHERE group_id = ? ORDER BY user_id", (group_id,))
-        # Returns a list of tuples: [(user_id, username), ...]
-        return cursor.fetchall()
-    finally:
-        conn.close()
+async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the Draw logic using the Database."""
+    query = update.callback_query
+    group_id = query.message.chat_id
 
-def update_assignments_and_status(group_id, assignments):
-    """
-    Updates the 'target_id' for each participant and sets the game status to COMPLETED.
-    Args: assignments: list of (santa_id, target_id) tuples.
-    """
-    conn = get_db_connection()
-    try:
-        # Use a transaction for multiple updates (better performance and atomicity)
-        
-        # Update each participant's target_id
-        update_data = [(target_id, santa_id, group_id) for santa_id, target_id in assignments]
-        conn.executemany("UPDATE participants SET target_id = ? WHERE user_id = ? AND group_id = ?", update_data)
-        
-        # Update the game status
-        conn.execute("UPDATE games SET status = ? WHERE group_id = ?", ('COMPLETED', group_id))
-        
-        conn.commit()
-    finally:
-        conn.close()
+    # [DB] Fetch all participants
+    participants = database.get_participants_data(group_id)
+    # participants is [(123, 'Alice'), (456, 'Bob')]
+
+    if len(participants) < 2:
+        await query.answer("Need at least 2 people!", show_alert=True)
+        return
+    
+    await query.answer("Drawing names now...")
+
+    # Extract IDs for shuffling
+    # We also need a map of ID -> Name to send the DM later
+    user_ids = [p[0] for p in participants]
+    id_to_name = {p[0]: p[1] for p in participants}
+
+    # 1. Shuffle
+    random.shuffle(user_ids)
+    
+    # 2. Create Pairs (Circular)
+    pairs = [] # List of (santa_id, target_id)
+    for i in range(len(user_ids)):
+        santa_id = user_ids[i]
+        target_id = user_ids[(i + 1) % len(user_ids)]
+        pairs.append((santa_id, target_id))
+
+    # 3. [DB] Save assignments to Database
+    database.update_assignments_and_status(group_id, pairs)
+    exchange_date = database.get_exchange_date(group_id)
+    date_info = f"\n🗓️ **Exchange Day:** {exchange_date}" if exchange_date else ""
+
+    # 4. Send DMs
+    success_count = 0
+    for santa_id, target_id in pairs:
+        target_name = id_to_name[target_id]
+        try:
+            await context.bot.send_message(
+                chat_id=santa_id,
+                text=f"🤫 **SECRET SANTA MISSION** 🤫\n\n"
+                     f"You have been assigned to get a gift for: \n"
+                     f"🎁 **{target_name}** 🎁"
+                     f"{date_info}",
+                     parse_mode='Markdown'
+            )
+            success_count += 1
+        except Exception as e:
+            logging.error(f"Failed to DM {santa_id}: {e}")
+
+    # 5. Final Announcement
+    await query.message.edit_text(
+        f"🎲 **Draw Complete!** 🎲\n\n"
+        f"Participants: {len(user_ids)}\n"
+        f"DMs Sent: {success_count}\n\n"
+        "Check your private messages to see who you got!"
+    )
+
+async def set_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the conversation by asking for the gift exchange date."""
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("This command must be used in the group chat.")
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "📅 **What is the gift exchange day?**\n"
+        "Please reply with the date (e.g., 'Dec 24th' or 'January 5th').\n\n"
+        "To cancel, use /cancel.",
+        parse_mode='Markdown'
+    )
+    return SETTING_DATE
+    
+
+async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives the date and saves it to the database."""
+    group_id = update.effective_chat.id
+    exchange_date = update.message.text
+    
+    # [DB] Save the date
+    database.update_exchange_date(group_id, exchange_date)
+    
+    await update.message.reply_text(
+        f"✅ Gift exchange day saved: **{exchange_date}**\n\n"
+        f"This date will now be included in the private assignment messages.",
+        parse_mode='Markdown'
+    )
+    
+    # End the conversation
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels the current conversation."""
+    await update.message.reply_text('❌ Date setting cancelled.')
+    return ConversationHandler.END
+
+def main():
+    # [DB] Initialize the DB tables on startup
+    database.init_db()
+
+    application = Application.builder().token(TOKEN).build()
+
+    date_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('setdate', set_date_start)],
+        states={
+            SETTING_DATE: [
+                # Handles any plain text message that is NOT a command
+                MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_finish) 
+            ],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(CommandHandler(["start", "secretsanta"], start_secret_santa))
+    application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
+    application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
+    
+    print("Bot started polling...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == '__main__':
+    main()

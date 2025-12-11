@@ -1,9 +1,9 @@
 import logging
-import random # <--- Added this for the shuffle
+import random 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# REPLACE WITH YOUR TOKEN
+
 TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M" 
 
 logging.basicConfig(
@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# In-memory storage (Replace with your DB logic later)
+
 GAME_DATA = {}
 
 async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE):
