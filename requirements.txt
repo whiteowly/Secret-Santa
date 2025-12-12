@@ -27,9 +27,8 @@ socksio==1.0.0
 Sphinx==9.0.4
 thread==2.0.6
 tornado==6.5.3
+telegram
 urllib3_secure_extra==0.1.0
-
 winloop==0.4.0
-
 zstandard==0.25.0
 python-dotenv==1.0.0
