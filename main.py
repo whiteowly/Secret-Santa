@@ -1,6 +1,6 @@
 import logging
 import random
-import database # <--- CORRECT
+import database 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
@@ -13,8 +13,6 @@ from telegram.ext import (
 )
 import datetime
 import os
-
-# Load token from environment (supports .env if python-dotenv is installed)
 try:
     from dotenv import load_dotenv
     load_dotenv()
