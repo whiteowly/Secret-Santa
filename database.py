@@ -12,7 +12,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 1. Games Table (Stores overall group settings and status)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS games (
             group_id INTEGER PRIMARY KEY,
@@ -22,7 +22,7 @@ def init_db():
         )
     """)
 
-    # 2. Participants Table (Stores who is in which game)
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS participants (
             user_id INTEGER NOT NULL,
@@ -33,7 +33,7 @@ def init_db():
         )
     """)
     
-    # 3. Assignments Table (Stores the draw results: who got who)
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignments (
             group_id INTEGER NOT NULL,
@@ -48,10 +48,9 @@ def init_db():
 
     conn.commit()
 
-    # -- Migration: ensure columns exist on existing databases --
-    # Some users may have an older 'games' table without 'date_started' or 'exchange_date'.
+  
     cursor.execute("PRAGMA table_info(games)")
-    cols = {row[1] for row in cursor.fetchall()}  # row[1] is column name
+    cols = {row[1] for row in cursor.fetchall()}
     if 'date_started' not in cols:
         cursor.execute("ALTER TABLE games ADD COLUMN date_started TEXT")
     if 'exchange_date' not in cols:
@@ -75,14 +74,14 @@ def add_participant(user_id, group_id, username):
     """Adds a participant to the game. Returns True if added, False if already present."""
     conn = get_db_connection()
     try:
-        # Check if participant already exists
+       
         cursor = conn.execute("SELECT 1 FROM participants WHERE user_id = ? AND group_id = ?", (user_id, group_id))
         if cursor.fetchone():
-            return False # Already exists
+            return False 
 
-        # If not, insert
+       
         conn.execute("INSERT INTO participants (user_id, group_id, username, first_name) VALUES (?, ?, ?, ?)",
-                     (user_id, group_id, username, username)) # Using username for first_name too, for simplicity
+                     (user_id, group_id, username, username)) 
         conn.commit()
         return True
     finally:
@@ -93,7 +92,7 @@ def get_participants_data(group_id):
     conn = get_db_connection()
     try:
         cursor = conn.execute("SELECT user_id, username FROM participants WHERE group_id = ?", (group_id,))
-        # Returns a list of tuples: [(123, 'Alice'), (456, 'Bob'), ...]
+       
         return cursor.fetchall()
     finally:
         conn.close()
@@ -102,21 +101,19 @@ def update_assignments_and_status(group_id, pairs):
     """Saves the draw results (pairs) and updates game status to 'COMPLETED'."""
     conn = get_db_connection()
     try:
-        # 1. Clear any previous assignments for this group
+       
         conn.execute("DELETE FROM assignments WHERE group_id = ?", (group_id,))
-        
-        # 2. Insert new assignments
+      
         assignment_data = [(group_id, santa_id, target_id) for santa_id, target_id in pairs]
         conn.executemany("INSERT INTO assignments (group_id, santa_id, target_id) VALUES (?, ?, ?)", assignment_data)
-        
-        # 3. Update game status
+      
         conn.execute("UPDATE games SET status = ? WHERE group_id = ?", ('COMPLETED', group_id))
         
         conn.commit()
     finally:
         conn.close()
 
-# --- Functions for Exchange Date ---
+
 
 def update_exchange_date(group_id, date_text):
     """Saves the gift exchange date for the game (used by /setdate)."""
@@ -134,7 +131,7 @@ def get_exchange_date(group_id):
     try:
         cursor = conn.execute("SELECT exchange_date FROM games WHERE group_id = ?", (group_id,))
         result = cursor.fetchone()
-        # Returns the date text or None
+       
         return result[0] if result and result[0] else None 
     finally:
         conn.close()
@@ -149,7 +146,7 @@ def get_exchange_date(group_id):
     finally:
         conn.close()
         
-# --- Add this new function to your database.py file ---
+
 
 def get_all_assignments_for_user(user_id):
     """
@@ -158,8 +155,7 @@ def get_all_assignments_for_user(user_id):
     """
     conn = get_db_connection()
     try:
-        # We join assignments (santa_id -> target_id), participants (target_id -> target_name), 
-        # and games (group_id -> exchange_date).
+       
         cursor = conn.execute("""
             SELECT
                 t1.group_id,
@@ -171,7 +167,7 @@ def get_all_assignments_for_user(user_id):
             WHERE t1.santa_id = ?
         """, (user_id,))
         
-        # Returns a list of all assignments found for the user
+      
         return cursor.fetchall()
     finally:
         conn.close()        

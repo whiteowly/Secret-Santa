@@ -65,12 +65,12 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if added:
         await query.answer("You are joining the gang!")
-        # Send DM confirmation
+        
         try:
             await context.bot.send_message(
                 chat_id=user.id, 
                 text=f"You have successfully joined the gang for {query.message.chat.title}✨",
-                reply_markup=reply_markup # <--- ADDED LINE
+                reply_markup=reply_markup
             )
         except Exception:
             await context.bot.send_message(
@@ -80,14 +80,14 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await query.answer("You are already in the list!", show_alert=False)
 
-    # [DB] Get current list of participants to update the message
-    participants = database.get_participants_data(group_id) # <--- CORRECTED
+    
+    participants = database.get_participants_data(group_id) 
     count = len(participants)
     
-    # Create the text list of names
-    names_list = "\n".join([f"{p[1]}" for p in participants])
+    
+    names_list = "\n".join([f"• {p[1]}" for p in participants])
 
-    # Logic for buttons (Show GO button if 2+ people)
+   
     if count >= 2:
         keyboard = [
             [InlineKeyboardButton("Join!", callback_data='join_game')],
@@ -115,7 +115,7 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     group_id = query.message.chat_id
 
-    # [DB] Fetch all participants
+    
     participants = database.get_participants_data(group_id)
 
     if len(participants) < 2:
@@ -124,26 +124,25 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer("Drawing names now...")
 
-    # Extract IDs for shuffling
+
     user_ids = [p[0] for p in participants]
     id_to_name = {p[0]: p[1] for p in participants}
 
-    # 1. Shuffle
+
     random.shuffle(user_ids)
     
-    # 2. Create Pairs (Circular)
+ 
     pairs = [] 
     for i in range(len(user_ids)):
         santa_id = user_ids[i]
         target_id = user_ids[(i + 1) % len(user_ids)]
         pairs.append((santa_id, target_id))
 
-    # 3. [DB] Save assignments to Database
+   
     database.update_assignments_and_status(group_id, pairs)
     exchange_date = database.get_exchange_date(group_id)
     date_info = f"\nExchange Day: {exchange_date}" if exchange_date else ""
 
-    # 4. Send DMs
     success_count = 0
     for santa_id, target_id in pairs:
         target_name = id_to_name[target_id]
@@ -161,7 +160,6 @@ async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Failed to DM {santa_id}: {e}")
 
-    # 5. Final Announcement
     await query.message.edit_text(
         f"Draw Complete!\n\n"
         f"Participants: {len(user_ids)}\n"
@@ -188,7 +186,6 @@ async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     group_id = update.effective_chat.id
     exchange_date = update.message.text
     
-    # [DB] Save the date
     database.update_exchange_date(group_id, exchange_date)
     
     await update.message.reply_text(
@@ -207,7 +204,6 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles /daysleft command, calculating days remaining until exchange."""
     group_id = update.effective_chat.id
     
-    # 1. Get the exchange date string from the database
     date_str = database.get_exchange_date(group_id)
     
     if not date_str:
@@ -218,29 +214,23 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # We assume the user entered Month and Day (e.g., 'Dec 24th')
-        # We need to append the current year to parse it. 
-        # For simplicity, we assume the date is in the current or next year.
         
         today = datetime.date.today()
         current_year = today.year
 
-        # Clean the date string (e.g., remove 'th', 'st', 'rd')
+        
         cleaned_date_str = date_str.lower().replace('st', '').replace('nd', '').replace('rd', '').replace('th', '')
 
-        # Attempt to parse the date for the current year
+        
         exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {current_year}", "%b %d %Y").date()
         
-        # If the exchange date is in the past, assume it's next year
+        
         if exchange_date < today:
             next_year = current_year + 1
             exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {next_year}", "%b %d %Y").date()
 
-        # 2. Calculate the difference
         time_until = exchange_date - today
         days_remaining = time_until.days
-
-        # 3. Send the result
         if days_remaining < 0:
             await update.message.reply_text(
                 f"How were the gifts?"
@@ -266,7 +256,6 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    # [DB] Initialize the DB tables on startup
     database.init_db()
 
     application = Application.builder().token(TOKEN).build()
