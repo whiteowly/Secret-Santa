@@ -12,9 +12,18 @@ from telegram.ext import (
     filters             
 )
 import datetime
+import os
 
-# REPLACE WITH YOUR TOKEN
-TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M"
+# Load token from environment (supports .env if python-dotenv is installed)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+TOKEN = os.getenv('TELEGRAM_TOKEN') or os.getenv('TOKEN')
+if not TOKEN:
+    raise SystemExit('Error: TELEGRAM_TOKEN environment variable not set.')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
