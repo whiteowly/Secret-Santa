@@ -1,7 +1,8 @@
 import logging
 import random
 import database 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
     CommandHandler, 
