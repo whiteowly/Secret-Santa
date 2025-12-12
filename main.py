@@ -23,7 +23,6 @@ logging.basicConfig(
 
 SETTING_DATE = 1
 
-
 async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles /start command."""
     if update.effective_chat.type not in ["group", "supergroup"]:
@@ -34,8 +33,7 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     group_id = update.effective_chat.id
     
-    # [DB] Initialize game in database
-    database.ensure_game_exists(group_id) # <--- CORRECTED
+    database.ensure_game_exists(group_id) 
 
     keyboard = [[InlineKeyboardButton("Join Secret Santa", callback_data='join_game')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -54,9 +52,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = query.from_user
     group_id = query.message.chat_id
     username = user.username or user.first_name
-
-    # [DB] Add participant to database
-    added = database.add_participant(user.id, group_id, username) # <--- CORRECTED
+    added = database.add_participant(user.id, group_id, username) 
 
     if added:
         await query.answer("You are joining the gang!")
