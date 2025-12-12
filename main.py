@@ -85,7 +85,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     count = len(participants)
     
     # Create the text list of names
-    names_list = "\n".join([f"• {p[1]}" for p in participants])
+    names_list = "\n".join([f"{p[1]}" for p in participants])
 
     # Logic for buttons (Show GO button if 2+ people)
     if count >= 2:
