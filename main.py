@@ -153,7 +153,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             try:
                 await context.bot.send_message(
                     chat_id=group_id,
-                    text=f"Gang Members\n\n"
+                    text=f"Secret Santa Members\n\n"
                         f"Total: {count}\n"
                          f"{names_list}\n\n"
                          f"{group_status_text}",
@@ -244,6 +244,18 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     group_id = update.effective_chat.id
+
+    # Only allow group admins/creator to run the draw
+    try:
+        user = update.effective_user or update.message.from_user
+        member = await context.bot.get_chat_member(group_id, user.id)
+        if member.status not in ("administrator", "creator"):
+            await update.message.reply_text("Only group admins can start the draw.")
+            return
+    except Exception:
+        # If we cannot determine admin status, be conservative and deny
+        await update.message.reply_text("Could not verify admin status. Only group admins can start the draw.")
+        return
 
     # Ensure a game row exists and check status to avoid double-draws
     database.ensure_game_exists(group_id)
@@ -380,7 +392,6 @@ async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"It's a date!: on {exchange_date}\n\n",
         parse_mode='Markdown'
     )
-    
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
