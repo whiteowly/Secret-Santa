@@ -347,6 +347,101 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Check your DMs to see who you got!"
     )
 
+
+async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the inline 'Draw' button (callback). Only admins may trigger the draw."""
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    group_id = query.message.chat_id
+
+    # Admin check
+    try:
+        member = await context.bot.get_chat_member(group_id, user.id)
+        if member.status not in ("administrator", "creator"):
+            await context.bot.send_message(chat_id=group_id, text="Only group admins can start the draw.")
+            return
+    except Exception:
+        await context.bot.send_message(chat_id=group_id, text="Could not verify admin status. Only group admins can start the draw.")
+        return
+
+    # Reuse the same logic as draw_command but adapted for callback context
+    database.ensure_game_exists(group_id)
+    status = database.get_game_status(group_id)
+    if status == 'COMPLETED':
+        await context.bot.send_message(chat_id=group_id, text="Draw already completed for this group.")
+        return
+    if status == 'DRAWING':
+        await context.bot.send_message(chat_id=group_id, text="A draw is already in progress. Please wait.")
+        return
+
+    participants = database.get_participants_data(group_id)
+    if len(participants) < 2:
+        await context.bot.send_message(chat_id=group_id, text="Need at least 2 people!")
+        return
+
+    await context.bot.send_message(chat_id=group_id, text="Drawing names now...")
+
+    try:
+        set_ok = database.try_set_status_to_drawing(group_id)
+        if not set_ok:
+            current = database.get_game_status(group_id)
+            if current is None or (isinstance(current, str) and current.strip() == ''):
+                try:
+                    database.update_game_status(group_id, 'DRAWING')
+                except Exception:
+                    logging.debug("Fallback: failed to set DRAWING directly")
+            else:
+                await context.bot.send_message(chat_id=group_id, text=f"Cannot start draw. Current status: {current}")
+                return
+    except Exception:
+        logging.debug("Failed to atomically set game status to DRAWING; falling back to non-atomic update")
+        try:
+            database.update_game_status(group_id, 'DRAWING')
+        except Exception:
+            logging.debug("Failed to set game status to DRAWING; continuing anyway")
+
+    user_ids = [p[0] for p in participants]
+    id_to_name = {p[0]: p[1] for p in participants}
+    random.shuffle(user_ids)
+    pairs = []
+    for i in range(len(user_ids)):
+        santa_id = user_ids[i]
+        target_id = user_ids[(i + 1) % len(user_ids)]
+        pairs.append((santa_id, target_id))
+
+    database.update_assignments_and_status(group_id, pairs)
+    exchange_date = database.get_exchange_date(group_id)
+    date_info = f"\nExchange Day: {exchange_date}" if exchange_date else ""
+
+    failed_dms = []
+    success_count = 0
+    for santa_id, target_id in pairs:
+        target_name = id_to_name[target_id]
+        try:
+            await context.bot.send_message(
+                chat_id=santa_id,
+                text=f"You are @{target_name}'s secret santa!\n\nMake sure you get them something good!\n{date_info}"
+            )
+            success_count += 1
+        except Exception as e:
+            logging.error(f"Failed to DM {santa_id}: {e}")
+            failed_user_info = next((p for p in participants if p[0] == santa_id), None)
+            if failed_user_info:
+                failed_dms.append(failed_user_info[1])
+
+    failed_info = ""
+    if failed_dms:
+        unique_failed_dms = sorted(list(set(failed_dms)))
+        failed_list = "\n".join([f"• @{name}" for name in unique_failed_dms])
+        failed_info = (
+            f"\n\nDM Failures!\nThe following users need to start a private chat with me:\n{failed_list}"
+        )
+
+    await context.bot.send_message(chat_id=group_id, text=(
+        f"Draw Complete!\n\nParticipants: {len(user_ids)}\nDMs Sent: {success_count}\n{failed_info}\nCheck your DMs to see who you got!"
+    ))
+
 async def set_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation by asking for the gift exchange date."""
     if update.effective_chat.type not in ["group", "supergroup"]:
@@ -550,6 +645,7 @@ def main():
     application.add_handler(date_conv_handler)
     application.add_handler(CommandHandler(["start", "secretsanta"], start_secret_santa))
     application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
+    application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
     application.add_handler(CommandHandler(["daysleft", "reminddays"], days_left))
     application.add_handler(CommandHandler("participants", participants))
     application.add_handler(CommandHandler(["draw", "redraw"], draw_command))
