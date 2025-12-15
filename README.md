@@ -1,0 +1,1 @@
+Trying to do Secret Santa but you can't do it due to distance and inconveniences? Don't worry @secretSanta_pickerBot has got you! Add it to your telegram group join the santa group then hit draw! you'll recieve a dm telling you whose secret Santa you are!
