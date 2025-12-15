@@ -21,8 +21,7 @@ try:
 except Exception:
     pass
 
-TOKEN = "7821913361:AAEb3wpAAAJUdJG3z3pEO2P7BQz-swU5G0M"
-# os.getenv('TELEGRAM_TOKEN') or os.getenv('TOKEN')
+TOKEN = os.getenv('TELEGRAM_TOKEN') or os.getenv('TOKEN')
 if not TOKEN:
     raise SystemExit('Error: TELEGRAM_TOKEN environment variable not set.')
 
@@ -37,7 +36,7 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handles /start command."""
     if update.effective_chat.type not in ["group", "supergroup"]:
         await update.message.reply_text(
-            "Use this bot in a group chat, please and thank you. \n\n\n Btw @whiteowlyy built me✨"
+            "Use this bot in a group chat, please and thank you. \n\n\nBuilt by @whiteowl_y✨"
             )
         return
 
@@ -49,12 +48,27 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "Gang Members\n\n"
-        f"Total: 0\n\n"
-        "Waiting for people to join...\n",
+        "Secret Santa\n\n"
+        "Join down below!\n",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles /help command."""
+    await update.message.reply_text(
+        "Hey! Here are the commands you can use:\n\n"
+        "/start - Start the Secret Santa bot\n"
+        "/join - Join the Secret Santa\n"
+        "/draw - Draw names for Secret Santa\n"
+        "/redraw - Redraw names for Secret Santa if you don't like the current draw\n"
+        "/setdate - Set the gift exchange date\n"
+        "/daysleft - Show how many days are left until the gift exchange\n"
+        "/summary - Get a summary of your secret santa game\n"
+        "/help - Show this help message\n"
+        "/cancel - Cancel the current operation and start afresh\n"
+        "/participants - Show the list of participants\n",
+    )    
 
 async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the Join button."""
@@ -63,7 +77,8 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = query.from_user
     group_id = query.message.chat_id
     # Use username if available, otherwise fallback to first_name for group alert
-    username = user.username or user.first_name 
+    username = user.username or user.first_name
+    firstname = user.first_name 
     added = database.add_participant(user.id, group_id, username) 
 
     
@@ -90,9 +105,9 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # New text for the DM confirmation
         dm_text = (
-            f"🎁 You successfully joined the Secret Santa for **{query.message.chat.title}**!\n\n"
-            f"Wait for the Draw to start. I will send you a DM with your recipient's name "
-            f"right here once the group admin hits the 'Draw' button."
+            f"You successfully joined the Secret Santa for {query.message.chat.title}!\n\n"
+            f"Wait for the Draw to start. "
+           
         )
 
         try:
@@ -107,8 +122,8 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             try:
                 await context.bot.send_message(
                     chat_id=group_id, 
-                    text=f"❗ @{username} **I couldn't DM you!** Please start a private chat with me first "
-                         f"(by searching for me or clicking my name) and send /start, then try joining again.",
+                    text=f"@{username} I couldn't DM you! Please start a private chat with me first "
+                         f"(by searching for me or clicking my name).",
                     parse_mode='Markdown'
                 )
             except Exception as e:
@@ -119,7 +134,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             mention = f"@{user.username}" if user.username else user.first_name
             await context.bot.send_message(
                 chat_id=group_id,
-                text=f"🎉 {mention} has joined the Secret Santa!",
+                text=f"{mention} has joined the Secret Santa!",
                 parse_mode='Markdown'
             )
         except Exception as e:
@@ -128,7 +143,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Update the inline group message and also post a fresh summary message
         try:
             await query.edit_message_text(
-                 text=f"Gang Members\n\n"
+                 text=f"Secret Santa Members\n\n"
                      f"Total: {count}\n"
                      f"{names_list}\n\n"
                      f"{group_status_text}",
@@ -162,6 +177,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     group_id = update.effective_chat.id
     username = user.username or user.first_name
+    firstname = user.first_name
 
     added = database.add_participant(user.id, group_id, username)
 
@@ -173,9 +189,8 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if added:
         # Try to DM confirmation
         dm_text = (
-            f"🎁 You successfully joined the Secret Santa for {update.effective_chat.title}!\n\n"
-            f"Wait for the Draw to start. I will send you a DM with your recipient's name "
-            f"right here once the group admin hits the 'Draw' button."
+            f"You've successfully joined the Secret Santa for {update.effective_chat.title}!\n\n"
+            f"Wait for the Draw to start."
         )
 
         try:
@@ -184,8 +199,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=group_id,
-                    text=(f"❗ @{username} I couldn't DM you! Please start a private chat with me first "
-                          f"and send /start, then try joining again.")
+                    text=(f" @{username} I couldn't DM you! Please start a private chat with me first ")
                 )
             except Exception as e:
                 logging.debug(f"Failed to warn group about DM failure: {e}")
@@ -193,7 +207,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Announce to group
         try:
             mention = f"@{user.username}" if user.username else user.first_name
-            await context.bot.send_message(chat_id=group_id, text=f"🎉 {mention} has joined the Secret Santa!")
+            await context.bot.send_message(chat_id=group_id, text=f"{mention} has joined the Secret Santa!")
         except Exception as e:
             logging.debug(f"Could not send join announcement: {e}")
 
@@ -213,7 +227,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await context.bot.send_message(
                 chat_id=group_id,
-                text=(f"Gang Members\n\nTotal: {count}\n"
+                text=(f"Secret Santa Members\n\nTotal: {count}\n"
                       f"{names_list}\n\n{group_status_text}"),
                 reply_markup=reply_markup_group
             )
@@ -222,111 +236,6 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("You are already in the list!")
 
-async def go_draw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the Draw logic using the Database."""
-    query = update.callback_query
-    group_id = query.message.chat_id
-
-    # Ensure a game row exists and check its status to avoid double-draws
-    database.ensure_game_exists(group_id)
-    status = database.get_game_status(group_id)
-    if status == 'COMPLETED':
-        await query.answer("Draw already completed for this group.", show_alert=True)
-        return
-    if status == 'DRAWING':
-        await query.answer("A draw is already in progress. Please wait.", show_alert=True)
-        return
-
-    participants = database.get_participants_data(group_id)
-
-    if len(participants) < 2:
-        await query.answer("Need at least 2 people!", show_alert=True)
-        return
-    
-    await query.answer("Drawing names now...")
-
-    # Attempt an atomic status transition to DRAWING; if it fails, another draw is in progress or completed.
-    try:
-        set_ok = database.try_set_status_to_drawing(group_id)
-        if not set_ok:
-            current = database.get_game_status(group_id)
-            # If DB row exists but status is NULL/empty, fall back to direct update
-            if current is None or (isinstance(current, str) and current.strip() == ''):
-                try:
-                    database.update_game_status(group_id, 'DRAWING')
-                except Exception:
-                    logging.debug("Fallback: failed to set DRAWING directly")
-            else:
-                await query.answer(f"Cannot start draw. Current status: {current}", show_alert=True)
-                return
-    except Exception:
-        logging.debug("Failed to atomically set game status to DRAWING; falling back to non-atomic update")
-        try:
-            database.update_game_status(group_id, 'DRAWING')
-        except Exception:
-            logging.debug("Failed to set game status to DRAWING; continuing anyway")
-
-
-    user_ids = [p[0] for p in participants]
-    id_to_name = {p[0]: p[1] for p in participants}
-
-
-    random.shuffle(user_ids)
-    
- 
-    pairs = [] 
-    for i in range(len(user_ids)):
-        santa_id = user_ids[i]
-        target_id = user_ids[(i + 1) % len(user_ids)]
-        pairs.append((santa_id, target_id))
-
-   
-    # This call will save assignments and set status to COMPLETED
-    database.update_assignments_and_status(group_id, pairs)
-    exchange_date = database.get_exchange_date(group_id)
-    date_info = f"\nExchange Day: {exchange_date}" if exchange_date else ""
-
-    
-    failed_dms = []
-    success_count = 0
-    for santa_id, target_id in pairs:
-        target_name = id_to_name[target_id]
-        try:
-            # The assignment message (DM)
-            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("Refresh Summary", callback_data='summary_btn')]])
-            await context.bot.send_message(
-                chat_id=santa_id,
-                text=f"You are @{target_name}'s secret santa!\n\n"
-                     f"Make sure you get them something good!\n"
-                     f"{date_info}"
-            )
-            success_count += 1
-        except Exception as e:
-            logging.error(f"Failed to DM {santa_id}: {e}")
-            # Identify and record the username of the user who failed to receive the DM
-            failed_user_info = next((p for p in participants if p[0] == santa_id), None)
-            if failed_user_info:
-                failed_dms.append(failed_user_info[1]) 
-
-    # Prepare message for group chat with results
-    failed_info = ""
-    if failed_dms:
-        # Only list unique failed users (in case the same user was in the list multiple times, though unlikely here)
-        unique_failed_dms = sorted(list(set(failed_dms)))
-        failed_list = "\n".join([f"• @{name}" for name in unique_failed_dms])
-        failed_info = (
-            f"\n\n⚠️ **DM Failures!**\n"
-            f"The following users need to start a private chat with me:\n"
-            f"{failed_list}"
-        )
-
-    await query.message.edit_text(
-        f"Draw Complete!\n\n"
-        f"Participants: {len(user_ids)}\n"
-        f"DMs Sent: {success_count}\n"
-        f"{failed_info}\n"
-        "Check your DMs to see who you got!"
-    )
 
 
 async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -398,7 +307,7 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("Refresh Summary", callback_data='summary_btn')]])
             await context.bot.send_message(
                 chat_id=santa_id,
-                text=f"You are {target_name}'s secret santa!\n\n"
+                text=f"You are @{target_name}'s secret santa!\n\n"
                      f"Make sure you get them something good!\n"
                      f"{date_info}"
             )
@@ -414,7 +323,7 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         unique_failed_dms = sorted(list(set(failed_dms)))
         failed_list = "\n".join([f"• @{name}" for name in unique_failed_dms])
         failed_info = (
-            f"\n\n⚠️ **DM Failures!**\n"
+            f"\n\nDM Failures!\n"
             f"The following users need to start a private chat with me:\n"
             f"{failed_list}"
         )
@@ -440,12 +349,32 @@ async def set_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode='Markdown'
     )
     return SETTING_DATE
+
+
+async def setdate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point for /setdate. If arguments are provided, save directly; otherwise start the conversation."""
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("This command must be used in a group chat.")
+        return ConversationHandler.END
+
+    # If user provided the date inline: /setdate Dec 24
+    if context.args:
+        exchange_date = " ".join(context.args)
+        group_id = update.effective_chat.id
+        database.ensure_game_exists(group_id)
+        database.update_exchange_date(group_id, exchange_date)
+        await update.message.reply_text(f"Saved exchange date: {exchange_date}")
+        return ConversationHandler.END
+
+    # Otherwise start the interactive flow
+    return await set_date_start(update, context)
     
 async def set_date_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the date and saves it to the database."""
     group_id = update.effective_chat.id
     exchange_date = update.message.text
-    
+    # Ensure the game row exists so the date is saved
+    database.ensure_game_exists(group_id)
     database.update_exchange_date(group_id, exchange_date)
     
     await update.message.reply_text(
@@ -474,17 +403,10 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        
         today = datetime.date.today()
         current_year = today.year
-
-        
         cleaned_date_str = date_str.lower().replace('st', '').replace('nd', '').replace('rd', '').replace('th', '')
-
-        
         exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {current_year}", "%b %d %Y").date()
-        
-        
         if exchange_date < today:
             next_year = current_year + 1
             exchange_date = datetime.datetime.strptime(f"{cleaned_date_str} {next_year}", "%b %d %Y").date()
@@ -502,14 +424,13 @@ async def days_left(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await update.message.reply_text(
-                f"Time Remaining Until Gifting day! ⏳\n\n"
-                f"That means you have exactly {days_remaining} days left to shop! Happy gifting!"
+                f"You have exactly {days_remaining} days left to shop! Happy gifting!"
             )
 
     except ValueError:
         await update.message.reply_text(
             f"Error Calculating Date!\n\n"
-            f"I couldn't understand the date format: **{date_str}**.\n"
+            f"I couldn't understand the date format: {date_str}.\n"
             " Ask the admin to use `/setdate` with a clear format (e.g., 'Dec 24th')."
         )
 
@@ -525,14 +446,51 @@ async def participants(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not participants:
         await update.message.reply_text(
-            "Gang Members\n\nTotal: 0\n\nWaiting for people to join..."
+            "Secret Santa Members\n\nParticipants: none\n\n"
         )
         return
 
     names_list = "\n".join([f"• @{p[1]}" for p in participants])
     await update.message.reply_text(
-        f"Gang Members\n\nTotal: {len(participants)}\n{names_list}"
+        f"Secret Santa Members\n\nTotal: {len(participants)}\n{names_list}"
     )
+
+
+async def chatid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: replies with the current chat id (use in group to get group id)."""
+    chat = update.effective_chat
+    await update.message.reply_text(f"Chat ID: {chat.id} (type: {chat.type})")
+
+
+async def showdate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: shows stored exchange date and game status for the current group/chat."""
+    group_id = update.effective_chat.id
+    # Ensure DB row exists
+    database.ensure_game_exists(group_id)
+    status = database.get_game_status(group_id)
+    exchange_date = database.get_exchange_date(group_id)
+    participants = database.get_participants_data(group_id)
+    participants_display = 'none' if len(participants) == 0 else str(len(participants))
+    await update.message.reply_text(
+        f"Game status: {status}\nExchange date: {exchange_date or '(not set)'}\nParticipants: {participants_display}"
+    )
+
+
+async def cancelgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Group command to fully cancel/reset the current Secret Santa game (deletes participants and date)."""
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("This command must be used in a group chat.")
+        return
+
+    group_id = update.effective_chat.id
+    try:
+        database.cancel_game_full(group_id)
+        await update.message.reply_text("Secret Santa fully reset. Participants and date cleared; status set to JOINING.")
+    except Exception as e:
+        logging.debug(f"Failed to fully cancel game for {group_id}: {e}")
+        await update.message.reply_text("Failed to fully reset the game. See logs.")
+
+
 
 
 async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -550,9 +508,14 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     participants = database.get_participants_data(group_id)
     count = len(participants)
-    names_list = "\n".join([f"• @{p[1]}" for p in participants]) if participants else "(no participants)"
     exchange_date = database.get_exchange_date(group_id) or '(not set)'
+    if count == 0:
+        await update.message.reply_text(
+            f"Secret Santa Summary\n\nParticipants: none\n\nExchange Day: {exchange_date}"
+        )
+        return
 
+    names_list = "\n".join([f"• @{p[1]}" for p in participants])
     await update.message.reply_text(
         f"Secret Santa Summary\n\n"
         f"Participants: {count}\n"
@@ -560,50 +523,13 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Exchange Day: {exchange_date}"
     )
 
-
-async def summary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the 'summary_btn' callback pressed by users (typically from a DM). Sends personal assignment(s) or a brief summary."""
-    query = update.callback_query
-    user = query.from_user
-    user_id = user.id
-
-    # Fetch assignments where this user is the santa
-    try:
-        assignments = database.get_all_assignments_for_user(user_id)
-    except Exception as e:
-        logging.debug(f"Error fetching assignments for user {user_id}: {e}")
-        assignments = []
-
-    if not assignments:
-        try:
-            await query.answer()
-            await context.bot.send_message(chat_id=user_id, text="No assignments found for you yet.")
-        except Exception:
-            logging.debug("Could not send personal summary DM")
-        return
-
-    # Build a readable reply
-    lines = []
-    for grp_id, target_name, exch_date in assignments:
-        exch = exch_date or '(not set)'
-        lines.append(f"Group {grp_id}: @{target_name} — Exchange Day: {exch}")
-
-    text = "Your Secret Santa Assignments:\n\n" + "\n".join(lines)
-    try:
-        await query.answer()
-        await context.bot.send_message(chat_id=user_id, text=text)
-    except Exception:
-        logging.debug("Failed to send assignment summary DM")
-
-
-
 def main():
     database.init_db()
 
     application = Application.builder().token(TOKEN).build()
 
     date_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('setdate', set_date_start)],
+        entry_points=[CommandHandler('setdate', setdate_command)],
         states={
             SETTING_DATE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_finish) 
@@ -614,13 +540,18 @@ def main():
     application.add_handler(date_conv_handler)
     application.add_handler(CommandHandler(["start", "secretsanta"], start_secret_santa))
     application.add_handler(CallbackQueryHandler(join_game_callback, pattern='^join_game$'))
-    application.add_handler(CallbackQueryHandler(go_draw_callback, pattern='^go_draw$'))
     application.add_handler(CommandHandler(["daysleft", "reminddays"], days_left))
     application.add_handler(CommandHandler("participants", participants))
     application.add_handler(CommandHandler(["draw", "redraw"], draw_command))
     application.add_handler(CommandHandler("join", join_command))
     application.add_handler(CommandHandler("summary", summary_command))
-    application.add_handler(CallbackQueryHandler(summary_callback, pattern='^summary_btn$'))
+    application.add_handler(CommandHandler("help", help_command))
+
+    # Debug helpers
+    application.add_handler(CommandHandler("chatid", lambda u, c: chatid_command(u, c)))
+    application.add_handler(CommandHandler("showdate", lambda u, c: showdate_command(u, c)))
+    # application.add_handler(CommandHandler("cancel", cancel))
+    application.add_handler(CommandHandler("cancel", cancelgame_command))
    
     
     print("Bot started polling...")

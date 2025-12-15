@@ -14,12 +14,13 @@ def init_db():
     cursor = conn.cursor()
 
     # 1. Games Table (Stores overall group settings and status)
+    # Create a clean schema (avoid inline SQL comments which can create malformed column names)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS games (
             group_id INTEGER PRIMARY KEY,
-            status TEXT NOT NULL,          -- e.g., 'JOINING', 'COMPLETED'
-            date_started TEXT NOT NULL,
-            exchange_date TEXT            -- Stores the gift exchange day (from /setdate)
+            status TEXT NOT NULL,
+            date_started TEXT,
+            exchange_date TEXT
         )
     """)
 
@@ -49,15 +50,56 @@ def init_db():
 
     conn.commit()
 
-    # -- Migration: ensure columns exist on existing databases --
-    # Some users may have an older 'games' table without 'date_started' or 'exchange_date'.
+    # Repair step: If the existing `games` table has unexpected column names (corruption
+    # caused by inline SQL comments), attempt a safe migration by renaming the old table
+    # and creating a fresh `games` table, then copying any matching columns.
     cursor.execute("PRAGMA table_info(games)")
-    cols = {row[1] for row in cursor.fetchall()}  # row[1] is column name
-    if 'date_started' not in cols:
+    pragma_rows = cursor.fetchall()
+    cols = [row[1] for row in pragma_rows]
+    expected = {'group_id', 'status', 'date_started', 'exchange_date'}
+    if set(cols) != expected:
+        # Rename the old (possibly malformed) table
+        try:
+            cursor.execute("ALTER TABLE games RENAME TO games_old")
+        except Exception:
+            # If rename fails, continue; we'll still create the correct table if missing
+            pass
+
+        # Create the clean table (again, idempotent)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS games (
+                group_id INTEGER PRIMARY KEY,
+                status TEXT NOT NULL,
+                date_started TEXT,
+                exchange_date TEXT
+            )
+        """)
+
+        # Try to copy any columns that exist in the old table into the new one
+        existing = set(cols)
+        common = [c for c in ['group_id', 'status', 'date_started', 'exchange_date'] if c in existing]
+        if 'group_id' in common:
+            try:
+                cols_sql = ",".join(common)
+                cursor.execute(f"INSERT OR IGNORE INTO games ({cols_sql}) SELECT {cols_sql} FROM games_old")
+            except Exception:
+                # If copying fails, just continue with an empty fresh table
+                pass
+
+        # Drop the old table if it exists to avoid future confusion
+        try:
+            cursor.execute("DROP TABLE IF EXISTS games_old")
+        except Exception:
+            pass
+
+    # Ensure expected columns exist on older DBs
+    cursor.execute("PRAGMA table_info(games)")
+    cols_after = {row[1] for row in cursor.fetchall()}
+    if 'date_started' not in cols_after:
         cursor.execute("ALTER TABLE games ADD COLUMN date_started TEXT")
-    if 'exchange_date' not in cols:
+    if 'exchange_date' not in cols_after:
         cursor.execute("ALTER TABLE games ADD COLUMN exchange_date TEXT")
-    if 'status' not in cols:
+    if 'status' not in cols_after:
         cursor.execute("ALTER TABLE games ADD COLUMN status TEXT")
     conn.commit()
     conn.close()
@@ -127,18 +169,21 @@ def get_participants_data(group_id):
 
 def update_assignments_and_status(group_id, pairs):
     """Saves the draw results (pairs) and updates game status to 'COMPLETED'."""
+    # Ensure the game row exists so the status update will apply
+    ensure_game_exists(group_id)
+
     conn = get_db_connection()
     try:
         # 1. Clear any previous assignments for this group
         conn.execute("DELETE FROM assignments WHERE group_id = ?", (group_id,))
-        
+
         # 2. Insert new assignments
         assignment_data = [(group_id, santa_id, target_id) for santa_id, target_id in pairs]
         conn.executemany("INSERT INTO assignments (group_id, santa_id, target_id) VALUES (?, ?, ?)", assignment_data)
-        
+
         # 3. Update game status
         conn.execute("UPDATE games SET status = ? WHERE group_id = ?", ('COMPLETED', group_id))
-        
+
         conn.commit()
     finally:
         conn.close()
@@ -171,6 +216,9 @@ def try_set_status_to_drawing(group_id):
 
 def update_exchange_date(group_id, date_text):
     """Saves the gift exchange date for the game (used by /setdate)."""
+    # Ensure a game row exists so the exchange_date update will apply
+    ensure_game_exists(group_id)
+
     conn = get_db_connection()
     try:
         conn.execute("UPDATE games SET exchange_date = ? WHERE group_id = ?", 
@@ -186,16 +234,6 @@ def get_exchange_date(group_id):
         cursor = conn.execute("SELECT exchange_date FROM games WHERE group_id = ?", (group_id,))
         result = cursor.fetchone()
         # Returns the date text or None
-        return result[0] if result and result[0] else None 
-    finally:
-        conn.close()
-
-def get_exchange_date(group_id):
-    """Retrieves the saved gift exchange date text."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.execute("SELECT exchange_date FROM games WHERE group_id = ?", (group_id,))
-        result = cursor.fetchone()
         return result[0] if result and result[0] else None 
     finally:
         conn.close()
@@ -226,3 +264,31 @@ def get_all_assignments_for_user(user_id):
         return cursor.fetchall()
     finally:
         conn.close()        
+
+
+def cancel_game(group_id):
+    """Resets the game for the given group: deletes assignments and sets status back to 'JOINING'."""
+    # Ensure a games row exists
+    ensure_game_exists(group_id)
+    conn = get_db_connection()
+    try:
+        # Remove assignments for a reset and set status back to JOINING
+        conn.execute("DELETE FROM assignments WHERE group_id = ?", (group_id,))
+        conn.execute("UPDATE games SET status = ? WHERE group_id = ?", ('JOINING', group_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def cancel_game_full(group_id):
+    """Fully resets the game for the given group: deletes assignments and participants,
+    clears exchange_date and sets status back to 'JOINING'."""
+    ensure_game_exists(group_id)
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM assignments WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM participants WHERE group_id = ?", (group_id,))
+        conn.execute("UPDATE games SET status = ?, exchange_date = ? WHERE group_id = ?", ('JOINING', None, group_id))
+        conn.commit()
+    finally:
+        conn.close()
