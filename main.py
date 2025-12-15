@@ -61,7 +61,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Start the Secret Santa bot\n"
         "/join - Join the Secret Santa\n"
         "/draw - Draw names for Secret Santa\n"
-        "/redraw - Redraw names for Secret Santa if you don't like the current draw\n"
         "/setdate - Set the gift exchange date\n"
         "/daysleft - Show how many days are left until the gift exchange\n"
         "/summary - Get a summary of your secret santa game\n"
