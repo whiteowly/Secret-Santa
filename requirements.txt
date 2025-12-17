@@ -32,3 +32,4 @@ urllib3_secure_extra==0.1.0
 winloop==0.4.0
 zstandard==0.25.0
 python-dotenv==1.0.0
+telegram.ext 

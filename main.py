@@ -36,7 +36,7 @@ async def start_secret_santa(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handles /start command."""
     if update.effective_chat.type not in ["group", "supergroup"]:
         await update.message.reply_text(
-            "Use this bot in a group chat, please and thank you. \n\n\nBuilt by @whiteowl_y✨"
+            "Use this bot in a group chat, please and thank you. \n\n\nBuilt by @jernal_y✨"
             )
         return
 
@@ -75,7 +75,6 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user = query.from_user
     group_id = query.message.chat_id
-    # Use username if available, otherwise fallback to first_name for group alert
     username = user.username or user.first_name
     firstname = user.first_name 
     added = database.add_participant(user.id, group_id, username) 
@@ -84,7 +83,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     participants = database.get_participants_data(group_id) 
     count = len(participants)
     
-    # --- Start: Logic for updating the group message keyboard and content ---
+    #  Start: Logic for updating the group message keyboard and content 
     names_list = "\n".join([f"• @{p[1]}" for p in participants])
     if count >= 2:
         keyboard = [
@@ -97,7 +96,7 @@ async def join_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         group_status_text = 'Waiting for more people to join...'
         
     reply_markup_group = InlineKeyboardMarkup(keyboard) 
-    # --- End: Logic for updating the group message keyboard and content ---
+    #  End: Logic for updating the group message keyboard and content 
 
     if added:
         await query.answer("Joining the Secret Santa list...")
